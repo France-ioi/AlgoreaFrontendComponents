@@ -24,6 +24,10 @@ import { TooltipModule } from 'primeng/tooltip';
 import { PendingChangesGuard } from 'src/app/shared/guards/pending-changes-guard';
 import { CompositionFilterComponent }
   from './components/item-chapter-view/group-situation-chapter-view/composition-filter/composition-filter.component';
+import { MatMenuModule } from '@angular/material/menu';
+import { DurationToReadable } from 'src/app/shared/pipes/duration';
+import { AccessEditDialogComponent } from './components/access-edit-dialog/access-edit-dialog.component';
+import { ButtonModule } from 'primeng/button';
 
 @NgModule({
   declarations: [
@@ -45,6 +49,8 @@ import { CompositionFilterComponent }
     ItemProgressComponent,
     ItemChapterViewComponent,
     CompositionFilterComponent,
+    DurationToReadable,
+    AccessEditDialogComponent,
   ],
   imports: [
     CommonModule,
@@ -53,6 +59,8 @@ import { CompositionFilterComponent }
     ReactiveFormsModule,
     FormsModule,
     TooltipModule,
+    MatMenuModule,
+    ButtonModule,
   ],
   providers: [
     PendingChangesGuard,

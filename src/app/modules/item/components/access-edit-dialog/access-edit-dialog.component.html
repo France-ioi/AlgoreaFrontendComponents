@@ -1,0 +1,55 @@
+<div mat-dialog-title>
+  <div class="dialog-header">
+    <span class="dialog-handler">
+      <i class="fa fa-lock"></i>
+    </span>
+    <span class="dialog-title"> Access given to {{ data.title }}</span>
+    <span class="dialog-close" (click)="onClose()">
+      <img src="assets/images/close.svg" alt="close">
+    </span>
+  </div>
+  <div mat-dialog-close></div>
+</div>
+
+<div mat-dialog-content>
+  <div class="dialog-container">
+    <div class="dialog-content">
+      <div class="comment-wrapper">
+        {{ data.comment }}
+      </div>
+      <ng-container *ngFor="let section of data.sections">
+        <alg-progress-section
+        *ngIf="section.values"
+        [title]="section.header.title"
+        [icon]="section.header.icon"
+        [defaultValue]="section.defaultValue"
+        [disabled]="section.disabled"
+        [values]="section.values"
+      ></alg-progress-section>
+      <alg-boolean-section
+        *ngIf="!section.values"
+        [title]="section.header.title"
+        [icon]="section.header.icon"
+        [defaultBooleanValue]="section.defaultBooleanValue"
+        [disabled]="section.disabled"
+        [label]="section.label"
+      ></alg-boolean-section>
+      </ng-container>
+    </div>
+  </div>
+</div>
+<div mat-dialog-actions>
+  <alg-button
+    icon="fa fa-times"
+    label="Cancel"
+    class="ui-button-rounded ui-button-danger"
+    style="margin-right: 1.25rem;"
+    (click)="onClose()"
+  ></alg-button>
+  <alg-button
+    icon="fa fa-check"
+    label="Proceed"
+    class="ui-button-rounded"
+    (click)="onClose()"
+  ></alg-button>
+</div>
