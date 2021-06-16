@@ -7,6 +7,6 @@
   </nav>
   <div class="iframe-container" [style.height.px]="height">
     <iframe #iframe [src]="url"></iframe>
-    <div *ngIf="state == 'loading' ||state == 'unloading'" class="loading">Loading...</div>
+    <div *ngIf="state == 'loading' || state == 'unloading'" class="loading">Loading...</div>
   </div>
 </div>

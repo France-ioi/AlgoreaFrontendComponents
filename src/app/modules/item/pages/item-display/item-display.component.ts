@@ -1,8 +1,11 @@
-import { AfterViewInit, Component, ElementRef, Input, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { AfterViewChecked, Component, ElementRef, Input, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { ItemData } from '../../services/item-datasource.service';
 import { CompleteFunction, ErrorFunction, Platform, Task, TaskParams, TaskProxyManager } from 'src/app/shared/task/task-xd-pr';
-import { interval, Subscription } from 'rxjs';
+import { interval, Observable, Subscriber, Subscription } from 'rxjs';
+import { TaskTokensService } from 'src/app/shared/http-services/task-tokens.service';
+import { throttleTime } from 'rxjs/operators';
+import { AnswerActionsService } from 'src/app/shared/http-services/answer-actions.service';
 
 interface TaskTab {
   name: string
@@ -13,11 +16,12 @@ interface TaskTab {
   templateUrl: './item-display.component.html',
   styleUrls: [ './item-display.component.scss' ]
 })
-export class ItemDisplayComponent implements OnInit, AfterViewInit, OnDestroy {
+export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy {
   @Input() itemData?: ItemData;
   @ViewChild('iframe') iframe?: ElementRef<HTMLIFrameElement>;
 
   state : 'loading' | 'loaded' | 'unloading';
+  urlSet = false;
   url? : SafeResourceUrl;
   msg = '';
 
@@ -33,10 +37,18 @@ export class ItemDisplayComponent implements OnInit, AfterViewInit, OnDestroy {
 
   lastAnswer = '';
   lastState = '';
-  saveInterval? : Subscription;
+  answerCheckInterval? : Subscription;
+  answerSaveInterval? : Subscription;
+  answerSaveSubscriber? : Subscriber<void>;
+  saving = false; // currently unused
 
-  constructor(private sanitizer: DomSanitizer) {
+  constructor(
+    private sanitizer: DomSanitizer,
+    private answerActionsService: AnswerActionsService,
+    private taskTokensService: TaskTokensService
+  ) {
     this.state = 'loading';
+    this.setUrl('about:blank');
     this.height = 400;
     const initialTab = { name: 'Task' };
     this.tabs = [ initialTab ];
@@ -48,23 +60,37 @@ export class ItemDisplayComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // Lifecycle functions
   ngOnInit(): void {
-    const url = this.itemData?.item.url || '';
-    // TODO get sToken
-    const sToken = '';
-    this.setUrl(this.taskProxyManager.getUrl(url, sToken, 'http://algorea.pem.dev', 'task-'));
+    if (!this.itemData || !this.itemData.currentResult) {
+      return;
+    }
+    //const url = this.itemData?.item.url || '';
+    const url = "https://bebras.mblockelet.info/exampleTable/";
+    this.taskTokensService.getTaskToken(this.itemData.item.id, this.itemData.currentResult.attemptId)
+      .subscribe(token => {
+        this.setUrl(this.taskProxyManager.getUrl(url, token, 'http://algorea.pem.dev', 'task-'));
+        this.urlSet = true;
+      });
   }
 
-  ngAfterViewInit(): void {
-    if (this.iframe) {
-      const iframe = this.iframe.nativeElement;
-      this.taskProxyManager.getTaskProxy(iframe, this.taskIframeLoaded.bind(this), false);
-    }
+  ngAfterViewChecked(): void {
+    // Wait for the iframe to actually load the URL
+    this.taskIframeUrlSet();
   }
 
   ngOnDestroy(): void {
     this.heightInterval?.unsubscribe();
-    this.saveInterval?.unsubscribe();
+    this.answerCheckInterval?.unsubscribe();
+    this.answerSaveInterval?.unsubscribe();
     this.taskProxyManager.deleteTaskProxy();
+  }
+
+
+  // Iframe URL set
+  taskIframeUrlSet(): void {
+    if (this.iframe && this.urlSet && !this.task) {
+      const iframe = this.iframe.nativeElement;
+      this.taskProxyManager.getTaskProxy(iframe, this.taskIframeLoaded.bind(this), false);
+    }
   }
 
   // Task iframe is ready
@@ -84,7 +110,16 @@ export class ItemDisplayComponent implements OnInit, AfterViewInit, OnDestroy {
 
     this.updateHeight();
     this.heightInterval = interval(1000).subscribe(() => this.updateHeight());
-    this.saveInterval = interval(1000).subscribe(() => this.getAnswerState());
+
+    // Check answer for changes every 10s, and save it every 60s
+    this.answerCheckInterval = interval(10000).subscribe(() => this.getAnswerState());
+    this.answerSaveInterval = new Observable(subscriber => {
+      this.answerSaveSubscriber = subscriber;
+    })
+      .pipe(throttleTime(60000, undefined, { leading: true, trailing: true }))
+      .subscribe(() => {
+        this.saveAnswerState();
+      });
 
     this.task?.showViews({ task: true }, () => {});
 
@@ -93,27 +128,39 @@ export class ItemDisplayComponent implements OnInit, AfterViewInit, OnDestroy {
     });
   }
 
-  // Communication with the task
+  // Answer management
   getAnswerState(): void {
+    // Gets the answer from the task, saves it if new
     this.task?.getAnswer((answer : string) => {
       this.task?.getState((state: string) => {
-        this.saveAnswerState(answer, state);
+        if (answer != this.lastAnswer || state != this.lastState) {
+          this.lastAnswer = answer;
+          this.lastState = state;
+          this.answerSaveSubscriber?.next();
+        }
       });
     });
   }
 
   reloadAnswerState(answer : string, state : string, callback : CompleteFunction): void {
+    // Reloads an answer into the task
     this.task?.reloadAnswer(answer, () => {
       this.task?.reloadState(state, callback);
     });
   }
 
-  saveAnswerState(answer : string, state : string) : void {
-    if (answer != this.lastAnswer || state != this.lastState) {
-      // TODO Save
-    }
-    this.lastAnswer = answer;
-    this.lastState = state;
+  saveAnswerState(): void {
+    // Saves the answer to the backend
+    this.saving = true;
+    this.answerActionsService.updateCurrent(
+      this.itemData?.item.id || '',
+      this.itemData?.currentResult?.attemptId || '',
+      this.lastAnswer,
+      this.lastState
+    )
+      .subscribe(() => {
+        this.saving = false;
+      });
   }
 
   updateHeight(): void {
@@ -130,7 +177,7 @@ export class ItemDisplayComponent implements OnInit, AfterViewInit, OnDestroy {
     this.height = height;
   }
 
-  setUrl(url? : string | null): void {
+  setUrl(url : string): void {
     this.url = url ? this.sanitizer.bypassSecurityTrustResourceUrl(url) : undefined;
   }
 
