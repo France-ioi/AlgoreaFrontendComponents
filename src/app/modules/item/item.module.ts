@@ -34,6 +34,7 @@ import { ChapterUserProgressComponent } from './pages/chapter-user-progress/chap
 import { ItemProgressLabelPipe } from './pages/item-progress/itemProgressLabel';
 import { OverlayPanelModule } from 'primeng/overlaypanel';
 import { ItemDisplayComponent } from './pages/item-display/item-display.component';
+import { UserProgressDetailsComponent } from './components/user-progress-details/user-progress-details.component';
 
 @NgModule({
   declarations: [
@@ -62,6 +63,7 @@ import { ItemDisplayComponent } from './pages/item-display/item-display.componen
     ChapterUserProgressComponent,
     ItemProgressLabelPipe,
     ItemDisplayComponent,
+    UserProgressDetailsComponent,
   ],
   imports: [
     CommonModule,
