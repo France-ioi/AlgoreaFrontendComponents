@@ -13,10 +13,14 @@ export class CurrentContentService implements OnDestroy {
   current = new BehaviorSubject<ContentInfo|null>(null);
   currentContent$ = this.current.asObservable();
 
-  updateSameContent(updater: (content: ContentInfo) => ContentInfo): void {
+  updateSameContent(updater: (content: ContentInfo) => ContentInfo | null): void {
     // Emit again the same content, but updated by the updater
+    // If updater returns null then abort
     if (this.current.value !== null) {
-      this.current.next(updater(this.current.value));
+      const updatedValue = updater(this.current.value);
+      if (updatedValue !== null) {
+        this.current.next(updatedValue);
+      }
     }
   }
 
