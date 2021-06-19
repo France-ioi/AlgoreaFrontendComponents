@@ -63,8 +63,8 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
     if (!this.itemData || !this.itemData.currentResult) {
       return;
     }
-    //const url = this.itemData?.item.url || '';
-    const url = "https://bebras.mblockelet.info/exampleTable/";
+    const url = this.itemData?.item.url || '';
+    //const url = "https://bebras.mblockelet.info/exampleTable/";
     this.taskTokensService.getTaskToken(this.itemData.item.id, this.itemData.currentResult.attemptId)
       .subscribe(token => {
         this.setUrl(this.taskProxyManager.getUrl(url, token, 'http://algorea.pem.dev', 'task-'));
