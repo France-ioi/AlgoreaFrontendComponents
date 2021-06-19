@@ -14,7 +14,7 @@ export const environment: Environment = {
     { tag: 'en', path: '/en/' },
   ],
   allowForcedToken: true,
-  authType: 'cookies',
+  authType: 'tokens',
   secure: true,
   sameSite: false,
 };
