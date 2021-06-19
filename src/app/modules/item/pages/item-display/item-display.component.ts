@@ -177,6 +177,10 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
     }
     this.currentContentService.updateSameContent(content => {
       if (isItemInfo(content) && content.details !== undefined) {
+        if (content.route.id !== this.itemData?.route.id || content.details.attemptId !== this.itemData?.currentResult?.attemptId) {
+          // Abort update
+          return null;
+        }
         content.details.currentScore = score;
         content.details.bestScore = Math.max(content.details.bestScore || 0, score);
       }
