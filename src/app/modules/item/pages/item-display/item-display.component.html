@@ -5,7 +5,7 @@
       {{tab.name}}
     </a>
   </nav>
-  <div class="iframe-container" [style.height.px]="height">
+  <div class="iframe-container" [style.height.px]="height" [class]="classes">
     <iframe #iframe [src]="url"></iframe>
     <div *ngIf="state == 'loading' || state == 'unloading'" class="loading">Loading...</div>
   </div>

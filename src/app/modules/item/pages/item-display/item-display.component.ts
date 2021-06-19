@@ -3,9 +3,10 @@ import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { ItemData } from '../../services/item-datasource.service';
 import { CompleteFunction, ErrorFunction, Platform, Task, TaskParams, TaskProxyManager } from 'src/app/shared/task/task-xd-pr';
 import { interval, Observable, Subscriber, Subscription } from 'rxjs';
+import { LayoutService } from 'src/app/shared/services/layout.service';
+import { AnswerActionsService } from 'src/app/shared/http-services/answer-actions.service';
 import { TaskTokensService } from 'src/app/shared/http-services/task-tokens.service';
 import { throttleTime } from 'rxjs/operators';
-import { AnswerActionsService } from 'src/app/shared/http-services/answer-actions.service';
 
 interface TaskTab {
   name: string
@@ -20,6 +21,8 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
   @Input() itemData?: ItemData;
   @ViewChild('iframe') iframe?: ElementRef<HTMLIFrameElement>;
 
+  classes : string[] = [];
+
   state : 'loading' | 'loaded' | 'unloading';
   urlSet = false;
   url? : SafeResourceUrl;
@@ -32,7 +35,7 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
   task?: Task;
   platform? : Platform;
 
-  height: number;
+  height?: number;
   heightInterval? : Subscription;
 
   lastAnswer = '';
@@ -44,27 +47,28 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
 
   constructor(
     private sanitizer: DomSanitizer,
+    private layoutService: LayoutService,
     private answerActionsService: AnswerActionsService,
-    private taskTokensService: TaskTokensService
+    private taskTokensService: TaskTokensService,
   ) {
     this.state = 'loading';
     this.setUrl('about:blank');
     this.height = 400;
     const initialTab = { name: 'Task' };
     this.tabs = [ initialTab ];
-    this.tabs.push({ name: 'Editor' });
+    //this.tabs.push({ name: 'Editor' });
     this.activeTab = initialTab;
     this.taskProxyManager = new TaskProxyManager();
   }
 
-
   // Lifecycle functions
   ngOnInit(): void {
+    this.layoutService.toggleLeftMenuAndHeaders(false);
+    this.layoutService.toggleWithTask(true);
+    const url = this.itemData?.item.url || '';
     if (!this.itemData || !this.itemData.currentResult) {
       return;
     }
-    const url = this.itemData?.item.url || '';
-    //const url = "https://bebras.mblockelet.info/exampleTable/";
     this.taskTokensService.getTaskToken(this.itemData.item.id, this.itemData.currentResult.attemptId)
       .subscribe(token => {
         this.setUrl(this.taskProxyManager.getUrl(url, token, 'http://algorea.pem.dev', 'task-'));
@@ -82,6 +86,7 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
     this.answerCheckInterval?.unsubscribe();
     this.answerSaveInterval?.unsubscribe();
     this.taskProxyManager.deleteTaskProxy();
+    this.layoutService.toggleWithTask(false);
   }
 
 
@@ -122,6 +127,8 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
       });
 
     this.task?.showViews({ task: true }, () => {});
+
+    this.task?.getMetaData(this.processTaskMetaData.bind(this));
 
     this.task?.getViews((views : any) => {
       this.setViews(views);
@@ -167,6 +174,19 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
     this.task?.getHeight(this.setHeight.bind(this));
   }
 
+  processTaskMetaData(metadata : {[key: string] : any}): void {
+    if (metadata.minWidth == 'auto') {
+      this.classes = [ ...this.classes, 'full-width' ];
+    } else if (typeof metadata.minWidth == 'number') {
+      // TODO
+    }
+    if (metadata.autoHeight as boolean) {
+      this.height = undefined;
+      this.heightInterval?.unsubscribe();
+      this.classes = [ ...this.classes, 'auto-height' ];
+    }
+  }
+
   // Views management
   setViews(_views : any) : void {
     // TODO
@@ -174,6 +194,10 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
 
   // Utility functions
   setHeight(height: number): void {
+    if (this.classes.includes('auto-height')) {
+      this.height = undefined;
+      return;
+    }
     this.height = height;
   }
 
@@ -191,6 +215,10 @@ export class ItemDisplayPlatform extends Platform {
   constructor(task: Task, taskParams: TaskParams) {
     super(task);
     this.taskParams = taskParams;
+  }
+
+  log(_data : string | Array<any>, success : CompleteFunction, _error? : ErrorFunction) : void {
+    success();
   }
 
   validate(mode : string, success : CompleteFunction, _error : ErrorFunction) : void {
