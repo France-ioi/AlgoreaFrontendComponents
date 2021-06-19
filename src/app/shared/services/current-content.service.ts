@@ -13,6 +13,13 @@ export class CurrentContentService implements OnDestroy {
   current = new BehaviorSubject<ContentInfo|null>(null);
   currentContent$ = this.current.asObservable();
 
+  updateSameContent(updater: (content: ContentInfo) => ContentInfo): void {
+    // Emit again the same content, but updated by the updater
+    if (this.current.value !== null) {
+      this.current.next(updater(this.current.value));
+    }
+  }
+
   ngOnDestroy(): void {
     this.current.complete();
   }
