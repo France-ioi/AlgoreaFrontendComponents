@@ -29,6 +29,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   leftMenuAndHeaders = true;
   leftMenuAndHeadersSubscription? : Subscription;
+  withTask$ : Observable<boolean>;
   scrolled = false;
 
   private subscription?: Subscription;
@@ -42,6 +43,7 @@ export class AppComponent implements OnInit, OnDestroy {
     private localeService: LocaleService,
     private layoutService: LayoutService,
   ) {
+    this.withTask$ = this.layoutService.withTask$;
     this.leftMenuAndHeadersSubscription = this.layoutService.leftMenuAndHeadersDisplayed$.subscribe(shown => {
       this.leftMenuAndHeaders = shown;
     });

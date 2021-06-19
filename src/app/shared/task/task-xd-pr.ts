@@ -248,7 +248,7 @@ export class Task {
     });
   }
 
-  getMetaData(success : (result : any) => void, error? : ErrorFunction) : void {
+  getMetaData(success : (result : {[key : string]: any}) => void, error? : ErrorFunction) : void {
     this.chan?.call({ method: "task.getMetaData",
       timeout: 2000,
       error: error,
@@ -376,7 +376,7 @@ export class Platform {
       error('platform.openUrl is not defined!');
     }
   }
-  log(_data : any, _success : CompleteFunction, error? : ErrorFunction) : void {
+  log(_data : string | Array<any>, _success : CompleteFunction, error? : ErrorFunction) : void {
     if (error){
       error('platform.log is not defined!');
     }

@@ -2,6 +2,19 @@
   .iframe-container {
     position: relative;
     margin-right: 8px;
+
+    &.full-width {
+      margin-left: -1.6667rem;
+      margin-right: 0px;
+    }
+
+    &.auto-height {
+      height: calc(100vh - 9rem);
+
+      &.menu-headers-open {
+        height: calc(100vh - 22rem);
+      }
+    }
   }
 
   .loading {

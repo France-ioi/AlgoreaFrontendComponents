@@ -3,6 +3,7 @@ import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { ItemData } from '../../services/item-datasource.service';
 import { CompleteFunction, ErrorFunction, Platform, Task, TaskParams, TaskProxyManager } from 'src/app/shared/task/task-xd-pr';
 import { interval, Subscription } from 'rxjs';
+import { LayoutService } from 'src/app/shared/services/layout.service';
 
 interface TaskTab {
   name: string
@@ -17,6 +18,8 @@ export class ItemDisplayComponent implements OnInit, AfterViewInit, OnDestroy {
   @Input() itemData?: ItemData;
   @ViewChild('iframe') iframe?: ElementRef<HTMLIFrameElement>;
 
+  classes : string[] = [];
+
   state : 'loading' | 'loaded' | 'unloading';
   url? : SafeResourceUrl;
   msg = '';
@@ -28,26 +31,30 @@ export class ItemDisplayComponent implements OnInit, AfterViewInit, OnDestroy {
   task?: Task;
   platform? : Platform;
 
-  height: number;
+  height?: number;
   heightInterval? : Subscription;
 
   lastAnswer = '';
   lastState = '';
   saveInterval? : Subscription;
 
-  constructor(private sanitizer: DomSanitizer) {
+  constructor(
+    private sanitizer: DomSanitizer,
+    private layoutService: LayoutService
+  ) {
     this.state = 'loading';
     this.height = 400;
     const initialTab = { name: 'Task' };
     this.tabs = [ initialTab ];
-    this.tabs.push({ name: 'Editor' });
+    //this.tabs.push({ name: 'Editor' });
     this.activeTab = initialTab;
     this.taskProxyManager = new TaskProxyManager();
   }
 
-
   // Lifecycle functions
   ngOnInit(): void {
+    this.layoutService.toggleLeftMenuAndHeaders(false);
+    this.layoutService.toggleWithTask(true);
     const url = this.itemData?.item.url || '';
     // TODO get sToken
     const sToken = '';
@@ -65,6 +72,7 @@ export class ItemDisplayComponent implements OnInit, AfterViewInit, OnDestroy {
     this.heightInterval?.unsubscribe();
     this.saveInterval?.unsubscribe();
     this.taskProxyManager.deleteTaskProxy();
+    this.layoutService.toggleWithTask(false);
   }
 
   // Task iframe is ready
@@ -87,6 +95,8 @@ export class ItemDisplayComponent implements OnInit, AfterViewInit, OnDestroy {
     this.saveInterval = interval(1000).subscribe(() => this.getAnswerState());
 
     this.task?.showViews({ task: true }, () => {});
+
+    this.task?.getMetaData(this.processTaskMetaData.bind(this));
 
     this.task?.getViews((views : any) => {
       this.setViews(views);
@@ -120,6 +130,19 @@ export class ItemDisplayComponent implements OnInit, AfterViewInit, OnDestroy {
     this.task?.getHeight(this.setHeight.bind(this));
   }
 
+  processTaskMetaData(metadata : {[key: string] : any}): void {
+    if (metadata.minWidth == 'auto') {
+      this.classes = [ ...this.classes, 'full-width' ];
+    } else if (typeof metadata.minWidth == 'number') {
+      // TODO
+    }
+    if (metadata.autoHeight as boolean) {
+      this.height = undefined;
+      this.heightInterval?.unsubscribe();
+      this.classes = [ ...this.classes, 'auto-height' ];
+    }
+  }
+
   // Views management
   setViews(_views : any) : void {
     // TODO
@@ -144,6 +167,10 @@ export class ItemDisplayPlatform extends Platform {
   constructor(task: Task, taskParams: TaskParams) {
     super(task);
     this.taskParams = taskParams;
+  }
+
+  log(_data : string | Array<any>, success : CompleteFunction, _error? : ErrorFunction) : void {
+    success();
   }
 
   validate(mode : string, success : CompleteFunction, _error : ErrorFunction) : void {
