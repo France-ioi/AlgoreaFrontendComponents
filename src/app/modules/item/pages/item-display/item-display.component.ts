@@ -6,7 +6,9 @@ import { interval, Observable, Subscriber, Subscription } from 'rxjs';
 import { LayoutService } from 'src/app/shared/services/layout.service';
 import { AnswerActionsService } from 'src/app/shared/http-services/answer-actions.service';
 import { TaskTokensService } from 'src/app/shared/http-services/task-tokens.service';
-import { throttleTime } from 'rxjs/operators';
+import { first, mergeMap, switchMap, throttleTime } from 'rxjs/operators';
+import { CurrentContentService } from 'src/app/shared/services/current-content.service';
+import { isItemInfo } from 'src/app/shared/models/content/item-info';
 
 interface TaskTab {
   name: string
@@ -34,6 +36,7 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
   taskProxyManager: TaskProxyManager;
   task?: Task;
   platform? : Platform;
+  taskToken = '';
 
   height?: number;
   heightInterval? : Subscription;
@@ -50,6 +53,7 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
     private layoutService: LayoutService,
     private answerActionsService: AnswerActionsService,
     private taskTokensService: TaskTokensService,
+    private currentContentService: CurrentContentService,
   ) {
     this.state = 'loading';
     this.setUrl('about:blank');
@@ -71,6 +75,7 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
     }
     this.taskTokensService.getTaskToken(this.itemData.item.id, this.itemData.currentResult.attemptId)
       .subscribe(token => {
+        this.taskToken = token;
         this.setUrl(this.taskProxyManager.getUrl(url, token, 'http://algorea.pem.dev', 'task-'));
         this.urlSet = true;
       });
@@ -101,8 +106,8 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
   // Task iframe is ready
   taskIframeLoaded(task: Task): void {
     this.task = task;
-    const taskParams = { minScore: -3, maxScore: 10, randomSeed: 0, noScore: 0, readOnly: false, options: {} };
-    this.platform = new ItemDisplayPlatform(task, taskParams);
+    const taskParams = { minScore: 0, maxScore: 100, randomSeed: 0, noScore: 0, readOnly: false, options: {} };
+    this.platform = new ItemDisplayPlatform(task, taskParams, this.taskToken, this.answerActionsService, this.updateScore.bind(this));
     this.task.setPlatform(this.platform);
 
     const initialViews = { task: true, solution: true, editor: true, hints: true, grader: true, metadata: true };
@@ -122,9 +127,8 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
       this.answerSaveSubscriber = subscriber;
     })
       .pipe(throttleTime(60000, undefined, { leading: true, trailing: true }))
-      .subscribe(() => {
-        this.saveAnswerState();
-      });
+      .pipe(switchMap(() => this.saveAnswerState()))
+      .subscribe(() => {});
 
     this.task?.showViews({ task: true }, () => {});
 
@@ -156,18 +160,28 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
     });
   }
 
-  saveAnswerState(): void {
+  saveAnswerState(): Observable<void> {
     // Saves the answer to the backend
-    this.saving = true;
-    this.answerActionsService.updateCurrent(
+    return this.answerActionsService.updateCurrent(
       this.itemData?.item.id || '',
       this.itemData?.currentResult?.attemptId || '',
       this.lastAnswer,
       this.lastState
-    )
-      .subscribe(() => {
-        this.saving = false;
-      });
+    );
+  }
+
+  updateScore(score: number): void {
+    // Update the score in the UI
+    if (this.itemData?.currentResult) {
+      this.itemData.currentResult.score = score;
+    }
+    this.currentContentService.updateSameContent(content => {
+      if (isItemInfo(content) && content.details !== undefined) {
+        content.details.currentScore = score;
+        content.details.bestScore = Math.max(content.details.bestScore || 0, score);
+      }
+      return content;
+    });
   }
 
   updateHeight(): void {
@@ -211,10 +225,14 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
 }
 
 export class ItemDisplayPlatform extends Platform {
-  taskParams: any;
-  constructor(task: Task, taskParams: TaskParams) {
+  constructor(
+    task: Task,
+    private taskParams: TaskParams,
+    private taskToken: string,
+    private answerActionsService: AnswerActionsService,
+    private updateScore: (score: number) => void,
+  ) {
     super(task);
-    this.taskParams = taskParams;
   }
 
   log(_data : string | Array<any>, success : CompleteFunction, _error? : ErrorFunction) : void {
@@ -223,13 +241,29 @@ export class ItemDisplayPlatform extends Platform {
 
   validate(mode : string, success : CompleteFunction, _error : ErrorFunction) : void {
     if (mode == 'cancel') {
-      // TODO reload answer
+      this.task.reloadAnswer('', () => {});
+      success();
+      return;
     }
-    if (mode == 'validate') {
+    if (mode == 'done') {
+      // Get the latest answer from the task
       this.task.getAnswer((answer: string) => {
-        this.task.gradeAnswer(answer, '', (results : any) => {
-          success(results);
-        });
+        // Get the answer token
+        this.answerActionsService.getAnswerToken(answer, this.taskToken)
+          .pipe(
+            // Grade the answer
+            mergeMap(answerToken => new Observable<[string, number, string, string]>(subscriber => {
+              this.task.gradeAnswer(answer, answerToken,
+                (score, message, scoreToken) => subscriber.next([ answerToken, score, message, scoreToken ]));
+            })),
+            // Save result to backend
+            mergeMap(([ answerToken, score, _message, scoreToken ]) => {
+              this.updateScore(score);
+              return this.answerActionsService.saveGrade(this.taskToken, score, answerToken, scoreToken);
+            }),
+            first()
+          )
+          .subscribe(success);
       });
     }
   }
