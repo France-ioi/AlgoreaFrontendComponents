@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { BehaviorSubject } from 'rxjs';
+import { BehaviorSubject, timer } from 'rxjs';
 import { delay } from 'rxjs/operators';
 
 @Injectable({
@@ -8,13 +8,21 @@ import { delay } from 'rxjs/operators';
 export class LayoutService {
   // Service allowing modifications of the layout
 
+
   private leftMenuAndHeadersDisplayed = new BehaviorSubject<boolean>(true);
   leftMenuAndHeadersDisplayed$ = this.leftMenuAndHeadersDisplayed.asObservable().pipe(delay(0));
+  private leftMenuAndHeadersAutomatic = true;
 
   private withTask = new BehaviorSubject<boolean>(false);
   withTask$ = this.withTask.asObservable().pipe(delay(0));
 
-  toggleLeftMenuAndHeaders(shown?: boolean): void {
+  toggleLeftMenuAndHeaders(shown?: boolean, timeFiltered?: boolean): void {
+    if (timeFiltered && !this.leftMenuAndHeadersAutomatic) {
+      return;
+    } else if (!timeFiltered) {
+      this.leftMenuAndHeadersAutomatic = false;
+      timer(60000).subscribe(() => this.leftMenuAndHeadersAutomatic = true);
+    }
     if (shown !== undefined) {
       this.leftMenuAndHeadersDisplayed.next(shown);
     } else {

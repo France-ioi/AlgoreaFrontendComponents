@@ -6,6 +6,7 @@ import { ItemData } from '../../services/item-datasource.service';
 import { bestAttemptFromResults } from 'src/app/shared/helpers/attempts';
 import { ItemRouter } from 'src/app/shared/routing/item-router';
 import { typeCategoryOfItem } from 'src/app/shared/helpers/item-type';
+import { LayoutService } from 'src/app/shared/services/layout.service';
 
 interface ItemChildAdditions {
   isLocked: boolean,
@@ -30,6 +31,7 @@ export class ChapterChildrenComponent implements OnChanges, OnDestroy {
   constructor(
     private getItemChildrenService: GetItemChildrenService,
     private itemRouter: ItemRouter,
+    private layoutService: LayoutService,
   ) {}
 
   private subscription?: Subscription;
@@ -49,6 +51,7 @@ export class ChapterChildrenComponent implements OnChanges, OnDestroy {
       path: this.itemData.route.path.concat([ this.itemData.item.id ]),
       ...attemptId ? { attemptId: attemptId } : { parentAttemptId: parentAttemptId }
     });
+    this.layoutService.toggleLeftMenuAndHeaders(false);
   }
 
   private reloadData(): void {
