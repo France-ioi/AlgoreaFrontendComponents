@@ -2,13 +2,14 @@ import { AfterViewChecked, Component, ElementRef, Input, OnDestroy, OnInit, View
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { ItemData } from '../../services/item-datasource.service';
 import { CompleteFunction, ErrorFunction, Platform, Task, TaskParams, TaskProxyManager } from 'src/app/shared/task/task-xd-pr';
-import { interval, Observable, Subscriber, Subscription } from 'rxjs';
+import { interval, merge, Observable, of, Subscriber, Subscription } from 'rxjs';
 import { LayoutService } from 'src/app/shared/services/layout.service';
 import { AnswerActionsService } from 'src/app/shared/http-services/answer-actions.service';
 import { TaskTokensService } from 'src/app/shared/http-services/task-tokens.service';
 import { first, mergeMap, switchMap, throttleTime } from 'rxjs/operators';
 import { CurrentContentService } from 'src/app/shared/services/current-content.service';
 import { isItemInfo } from 'src/app/shared/models/content/item-info';
+import { UserSessionService } from 'src/app/shared/services/user-session.service';
 
 interface TaskTab {
   name: string
@@ -45,7 +46,8 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
   lastState = '';
   answerCheckInterval? : Subscription;
   answerSaveInterval? : Subscription;
-  answerSaveSubscriber? : Subscriber<void>;
+  answerSaveSubscriberThrottled? : Subscriber<void>;
+  answerSaveSubscriberForced? : Subscriber<void>;
   saving = false; // currently unused
 
   constructor(
@@ -54,6 +56,7 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
     private answerActionsService: AnswerActionsService,
     private taskTokensService: TaskTokensService,
     private currentContentService: CurrentContentService,
+    private userSessionService: UserSessionService,
   ) {
     this.state = 'loading';
     this.setUrl('about:blank');
@@ -67,7 +70,7 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
 
   // Lifecycle functions
   ngOnInit(): void {
-    this.layoutService.toggleLeftMenuAndHeaders(false);
+    this.layoutService.toggleLeftMenuAndHeaders(false, true);
     this.layoutService.toggleWithTask(true);
     const url = this.itemData?.item.url || '';
     if (!this.itemData || !this.itemData.currentResult) {
@@ -107,7 +110,14 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
   taskIframeLoaded(task: Task): void {
     this.task = task;
     const taskParams = { minScore: 0, maxScore: 100, randomSeed: 0, noScore: 0, readOnly: false, options: {} };
-    this.platform = new ItemDisplayPlatform(task, taskParams, this.taskToken, this.answerActionsService, this.updateScore.bind(this));
+    this.platform = new ItemDisplayPlatform(
+      task,
+      taskParams,
+      this.taskToken,
+      this.answerActionsService,
+      this.forceSaveAnswerState.bind(this),
+      this.updateScore.bind(this)
+    );
     this.task.setPlatform(this.platform);
 
     const initialViews = { task: true, solution: true, editor: true, hints: true, grader: true, metadata: true };
@@ -123,10 +133,15 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
 
     // Check answer for changes every 10s, and save it every 60s
     this.answerCheckInterval = interval(10000).subscribe(() => this.getAnswerState());
-    this.answerSaveInterval = new Observable(subscriber => {
-      this.answerSaveSubscriber = subscriber;
-    })
-      .pipe(throttleTime(60000, undefined, { leading: true, trailing: true }))
+    this.answerSaveInterval = merge(
+      new Observable(subscriber => {
+        this.answerSaveSubscriberThrottled = subscriber;
+      })
+        .pipe(throttleTime(60000, undefined, { leading: true, trailing: true }))
+      ,
+      new Observable(subscriber => {
+        this.answerSaveSubscriberForced = subscriber;
+      }))
       .pipe(switchMap(() => this.saveAnswerState()))
       .subscribe(() => {});
 
@@ -137,6 +152,19 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
     this.task?.getViews((views : any) => {
       this.setViews(views);
     });
+
+    this.answerActionsService.listAnswers(this.itemData?.item.id||'', this.userSessionService.session$.value?.user.groupId||'')
+      .pipe(switchMap(answerList => {
+        const currentAnswer = answerList.find(answer => answer.type == 'Current');
+        const answerId = currentAnswer?.id || answerList[0]?.id;
+        return answerId ? this.answerActionsService.getAnswer(answerId) : of(null);
+      }))
+      .pipe(first())
+      .subscribe(answerData => {
+        this.task?.reloadAnswer(answerData?.answer || '', () => {
+          this.task?.reloadState(answerData?.state || '', () => {});
+        });
+      });
   }
 
   // Answer management
@@ -147,7 +175,7 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
         if (answer != this.lastAnswer || state != this.lastState) {
           this.lastAnswer = answer;
           this.lastState = state;
-          this.answerSaveSubscriber?.next();
+          this.answerSaveSubscriberThrottled?.next();
         }
       });
     });
@@ -168,6 +196,10 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
       this.lastAnswer,
       this.lastState
     );
+  }
+
+  forceSaveAnswerState(): void {
+    this.answerSaveSubscriberForced?.next();
   }
 
   updateScore(score: number): void {
@@ -234,6 +266,7 @@ export class ItemDisplayPlatform extends Platform {
     private taskParams: TaskParams,
     private taskToken: string,
     private answerActionsService: AnswerActionsService,
+    private forceSaveAnswerState: () => void,
     private updateScore: (score: number) => void,
   ) {
     super(task);
@@ -250,6 +283,7 @@ export class ItemDisplayPlatform extends Platform {
       return;
     }
     if (mode == 'done') {
+      this.forceSaveAnswerState();
       // Get the latest answer from the task
       this.task.getAnswer((answer: string) => {
         // Get the answer token
