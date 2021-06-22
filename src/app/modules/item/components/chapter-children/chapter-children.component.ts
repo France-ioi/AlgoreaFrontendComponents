@@ -52,7 +52,7 @@ export class ChapterChildrenComponent implements OnChanges, OnDestroy {
       ...attemptId ? { attemptId: attemptId } : { parentAttemptId: parentAttemptId }
     });
     if (this.itemData.item.type == 'Course' || this.itemData.item.type == 'Task'){
-      this.layoutService.toggleLeftMenuAndHeaders(false);
+      this.layoutService.toggleLeftMenuAndHeaders(false, true);
     }
   }
 

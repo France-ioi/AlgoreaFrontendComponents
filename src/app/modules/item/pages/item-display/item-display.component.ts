@@ -70,7 +70,7 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
 
   // Lifecycle functions
   ngOnInit(): void {
-    this.layoutService.toggleLeftMenuAndHeaders(false, true);
+    this.layoutService.toggleLeftMenuAndHeaders(false, true, true);
     this.layoutService.toggleWithTask(true);
     const url = this.itemData?.item.url || '';
     if (!this.itemData || !this.itemData.currentResult) {
