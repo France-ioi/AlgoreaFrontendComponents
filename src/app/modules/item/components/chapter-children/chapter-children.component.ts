@@ -51,7 +51,9 @@ export class ChapterChildrenComponent implements OnChanges, OnDestroy {
       path: this.itemData.route.path.concat([ this.itemData.item.id ]),
       ...attemptId ? { attemptId: attemptId } : { parentAttemptId: parentAttemptId }
     });
-    this.layoutService.toggleLeftMenuAndHeaders(false);
+    if (this.itemData.item.type == 'Course' || this.itemData.item.type == 'Task'){
+      this.layoutService.toggleLeftMenuAndHeaders(false);
+    }
   }
 
   private reloadData(): void {
