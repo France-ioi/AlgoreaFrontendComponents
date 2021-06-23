@@ -38,6 +38,7 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
   task?: Task;
   platform? : Platform;
   taskToken = '';
+  gotTaskProxy = false;
 
   height?: number;
   heightInterval? : Subscription;
@@ -70,7 +71,7 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
 
   // Lifecycle functions
   ngOnInit(): void {
-    this.layoutService.toggleLeftMenuAndHeaders(false, true);
+    this.layoutService.toggleLeftMenuAndHeaders(false, true, true);
     this.layoutService.toggleWithTask(true);
     const url = this.itemData?.item.url || '';
     if (!this.itemData || !this.itemData.currentResult) {
@@ -100,9 +101,10 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
 
   // Iframe URL set
   taskIframeUrlSet(): void {
-    if (this.iframe && this.urlSet && !this.task) {
+    if (!this.gotTaskProxy && this.iframe && this.urlSet) {
       const iframe = this.iframe.nativeElement;
       this.taskProxyManager.getTaskProxy(iframe, this.taskIframeLoaded.bind(this), false);
+      this.gotTaskProxy = true;
     }
   }
 
@@ -145,11 +147,10 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
       .pipe(switchMap(() => this.saveAnswerState()))
       .subscribe(() => {});
 
-    this.task?.showViews({ task: true }, () => {});
-
     this.task?.getMetaData(this.processTaskMetaData.bind(this));
 
     this.task?.getViews((views : any) => {
+      this.task?.showViews({ task: true, editor: true }, () => {});
       this.setViews(views);
     });
 
@@ -161,9 +162,7 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
       }))
       .pipe(first())
       .subscribe(answerData => {
-        this.task?.reloadAnswer(answerData?.answer || '', () => {
-          this.task?.reloadState(answerData?.state || '', () => {});
-        });
+        this.reloadAnswerState(answerData?.answer || '', answerData?.state || '', () => {});
       });
   }
 
@@ -183,8 +182,8 @@ export class ItemDisplayComponent implements OnInit, AfterViewChecked, OnDestroy
 
   reloadAnswerState(answer : string, state : string, callback : CompleteFunction): void {
     // Reloads an answer into the task
-    this.task?.reloadAnswer(answer, () => {
-      this.task?.reloadState(state, callback);
+    this.task?.reloadState(answer, () => {
+      this.task?.reloadAnswer(state, callback);
     });
   }
 
