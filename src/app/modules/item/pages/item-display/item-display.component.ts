@@ -281,28 +281,34 @@ export class ItemDisplayPlatform extends Platform {
       success();
       return;
     }
-    if (mode == 'done') {
-      this.forceSaveAnswerState();
-      // Get the latest answer from the task
-      this.task.getAnswer((answer: string) => {
-        // Get the answer token
-        this.answerActionsService.getAnswerToken(answer, this.taskToken)
-          .pipe(
-            // Grade the answer
-            mergeMap(answerToken => new Observable<[string, number, string, string]>(subscriber => {
-              this.task.gradeAnswer(answer, answerToken,
-                (score, message, scoreToken) => subscriber.next([ answerToken, score, message, scoreToken ]));
-            })),
-            // Save result to backend
-            mergeMap(([ answerToken, score, _message, scoreToken ]) => {
-              this.updateScore(score);
-              return this.answerActionsService.saveGrade(this.taskToken, score, answerToken, scoreToken);
-            }),
-            first()
-          )
-          .subscribe(success);
-      });
+
+    if (mode == 'nextImmediate') {
+      // TODO mode == nextImmediate
+      return;
     }
+
+    this.forceSaveAnswerState();
+    // Get the latest answer from the task
+    this.task.getAnswer((answer: string) => {
+      // Get the answer token
+      this.answerActionsService.getAnswerToken(answer, this.taskToken)
+        .pipe(
+          // Grade the answer
+          mergeMap(answerToken => new Observable<[string, number, string, string]>(subscriber => {
+            this.task.gradeAnswer(answer, answerToken,
+              (score, message, scoreToken) => subscriber.next([ answerToken, score, message, scoreToken ]));
+          })),
+          // Save result to backend
+          mergeMap(([ answerToken, score, _message, scoreToken ]) => {
+            this.updateScore(score);
+            return this.answerActionsService.saveGrade(this.taskToken, score, answerToken, scoreToken);
+          }),
+          first()
+        )
+        .subscribe(success);
+      // TODO mode == next
+    });
+
   }
 
   getTaskParams(_key : string | undefined, _defaultValue : any, success : (result : any) => void, _? : ErrorFunction) : void {
