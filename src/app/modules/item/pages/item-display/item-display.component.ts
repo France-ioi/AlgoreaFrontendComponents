@@ -1,10 +1,11 @@
 import { AfterViewInit, Component, ElementRef, Input, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { ItemData } from '../../services/item-datasource.service';
-import { taskProxyFromIframe, taskUrlWithParameters, Platform, Task, TaskParams, TaskParamsValue }
+import { taskProxyFromIframe, taskUrlWithParameters, Platform, Task }
   from 'src/app/modules/item/task-communication/task-proxy';
 import { EMPTY, forkJoin, interval, Observable, of, Subscription } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
+import { TaskParams, TaskParamsKeyDefault, TaskParamsValue } from '../../task-communication/types';
 
 interface TaskTab {
   name: string
@@ -173,7 +174,7 @@ export class ItemDisplayPlatform extends Platform {
     return EMPTY;
   }
 
-  getTaskParams(_keydefault?: [string, TaskParamsValue]) : Observable<TaskParamsValue> {
+  getTaskParams(_keyDefault?: TaskParamsKeyDefault) : Observable<TaskParamsValue> {
     return of(this.taskParams);
   }
 }
