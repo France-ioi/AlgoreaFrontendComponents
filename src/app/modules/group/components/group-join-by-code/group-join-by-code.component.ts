@@ -1,8 +1,7 @@
-import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy, OnChanges } from '@angular/core';
-import { finalize, tap } from 'rxjs/operators';
+import { Component, Input, Output, EventEmitter, OnChanges, SimpleChanges } from '@angular/core';
 import { Duration } from '../../../../shared/helpers/duration';
 import { Group } from '../../http-services/get-group-by-id.service';
-import { CodeAdditions, withCodeAdditions } from '../../helpers/group-code';
+import { CodeLifetime, codeAdditions, CodeAdditions, isSameCodeLifetime } from '../../helpers/group-code';
 import { GroupActionsService } from '../../http-services/group-actions.service';
 import { CodeActionsService } from '../../http-services/code-actions.service';
 import { ActionFeedbackService } from 'src/app/shared/services/action-feedback.service';
@@ -11,7 +10,6 @@ import { ActionFeedbackService } from 'src/app/shared/services/action-feedback.s
   selector: 'alg-group-join-by-code',
   templateUrl: './group-join-by-code.component.html',
   styleUrls: [ './group-join-by-code.component.scss' ],
-  changeDetection: ChangeDetectionStrategy.OnPush
 })
 
 export class GroupJoinByCodeComponent implements OnChanges {
@@ -19,8 +17,18 @@ export class GroupJoinByCodeComponent implements OnChanges {
   @Input() group?: Group;
   @Output() refreshRequired = new EventEmitter<void>();
 
-  groupExt?: Group & CodeAdditions; // group extended with code related attributes
+  codeAdditions?: CodeAdditions;
+  initialCodeLifetime?: CodeLifetime;
+  codeLifetimeDuration?: Duration;
   processing = false;
+
+  codeLifetimeOptions = [
+    { label: $localize`Infinite`, value: 'infinite' },
+    { label: $localize`Usable once`, value: 'usable_once' },
+    { label: $localize`Custom`, value: 'custom' },
+  ];
+  customCodeLifetimeOption = this.codeLifetimeOptions.findIndex(({ value }) => value === 'custom');
+  selectedCodeLifetimeOption = 0;
 
   constructor(
     private groupActionsService: GroupActionsService,
@@ -28,8 +36,21 @@ export class GroupJoinByCodeComponent implements OnChanges {
     private actionFeedbackService: ActionFeedbackService,
   ) { }
 
-  ngOnChanges(): void {
-    this.groupExt = this.group ? withCodeAdditions(this.group) : undefined;
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes.group && this.group) {
+      this.codeAdditions = codeAdditions(this.group);
+
+      const codeLifetimeHasChanged = this.initialCodeLifetime === undefined
+        || !isSameCodeLifetime(this.initialCodeLifetime, this.codeAdditions.codeLifetime);
+
+      if (codeLifetimeHasChanged) {
+        this.initialCodeLifetime = this.codeAdditions.codeLifetime;
+        this.codeLifetimeDuration = this.codeAdditions.codeLifetime instanceof Duration
+          ? this.codeAdditions.codeLifetime
+          : undefined;
+        this.selectedCodeLifetimeOption = this.getSelectedCodeLifetimeOption(this.codeAdditions.codeLifetime);
+      }
+    }
   }
 
   /* events */
@@ -37,40 +58,45 @@ export class GroupJoinByCodeComponent implements OnChanges {
   generateNewCode(): void {
     if (!this.group) return;
 
-    // disable UI
+    // Disable UI
     this.processing = true;
 
     // call code refresh service, then group refresh data
-    this.codeActionsService
-      .createNewCode(this.group.id)
-      .pipe(
-        tap(() => this.refreshRequired.emit()),
-        finalize(() => this.processing = false)
-      ).subscribe({
-        next: _result => this.actionFeedbackService.success($localize`A new code has been generated`),
-        error: _err => this.actionFeedbackService.unexpectedError(),
-      });
+    this.codeActionsService.createNewCode(this.group.id).subscribe({
+      next: () => {
+        this.actionFeedbackService.success($localize`A new code has been generated`);
+        this.processing = false;
+        this.refreshRequired.emit();
+      },
+      error: () => {
+        this.actionFeedbackService.unexpectedError();
+        this.processing = false;
+      },
+    });
   }
 
-  changeValidity(newDuration: Duration): void {
-    if (!this.groupExt) return;
-
-    // check valid state
-    if (this.groupExt.hasCodeNotSet) return;
+  submitCodeLifetime(newCodeLifetime: CodeLifetime): void {
+    if (!this.group || !this.codeAdditions) return;
+    if (this.codeAdditions.hasCodeNotSet || isSameCodeLifetime(this.codeAdditions.codeLifetime, newCodeLifetime)) return;
 
     // disable UI
     this.processing = true;
 
     // call code refresh service, then group refresh data
-    this.groupActionsService
-      .updateGroup(this.groupExt.id, { code_lifetime: newDuration.toString(), code_expires_at: null })
-      .pipe(
-        tap(() => this.refreshRequired.emit()),
-        finalize(() => this.processing = false),
-      ).subscribe({
-        next: _result => this.actionFeedbackService.success($localize`The validity has been changed`),
-        error: _err => this.actionFeedbackService.unexpectedError(),
-      });
+    this.groupActionsService.updateGroup(this.group.id, {
+      code_lifetime: newCodeLifetime instanceof Duration ? newCodeLifetime.ms : newCodeLifetime,
+      code_expires_at: null,
+    }).subscribe({
+      next: () => {
+        this.actionFeedbackService.success($localize`The validity has been changed`);
+        this.processing = false;
+        this.refreshRequired.emit();
+      },
+      error: () => {
+        this.actionFeedbackService.unexpectedError();
+        this.processing = false;
+      },
+    });
   }
 
   removeCode(): void {
@@ -80,15 +106,37 @@ export class GroupJoinByCodeComponent implements OnChanges {
     this.processing = true;
 
     // call code refresh service, then group refresh data
-    this.codeActionsService
-      .removeCode(this.group.id)
-      .pipe(
-        tap(() => this.refreshRequired.emit()),
-        finalize(() => this.processing = false)
-      ).subscribe({
-        next: _result => this.actionFeedbackService.success($localize`Users will not be able to join with the former code.`),
-        error: _err => this.actionFeedbackService.unexpectedError(),
-      });
+    this.codeActionsService.removeCode(this.group.id).subscribe({
+      next: () => {
+        this.actionFeedbackService.success($localize`Users will not be able to join with the former code.`);
+        this.processing = false;
+        this.refreshRequired.emit();
+      },
+      error: () => {
+        this.actionFeedbackService.unexpectedError();
+        this.processing = false;
+      },
+    });
+  }
+
+  changeCodeLifetime(selected: number): void {
+    const optionValue = this.codeLifetimeOptions[selected]?.value;
+    if (optionValue === 'infinite') this.submitCodeLifetime(null);
+    if (optionValue === 'usable_once') this.submitCodeLifetime(0);
+
+    this.selectedCodeLifetimeOption = selected;
+  }
+
+  private getSelectedCodeLifetimeOption(codeLifetime?: CodeLifetime): number {
+    switch (codeLifetime) {
+      case null:
+      case undefined:
+        return this.codeLifetimeOptions.findIndex(({ value }) => value === 'infinite');
+      case 0:
+        return this.codeLifetimeOptions.findIndex(({ value }) => value === 'usable_once');
+      default:
+        return this.codeLifetimeOptions.findIndex(({ value }) => value === 'custom');
+    }
   }
 
 }

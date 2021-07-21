@@ -3,7 +3,7 @@ import * as D from 'io-ts/Decoder';
 
 export const groupCodeDecoder = D.partial({
   code: D.nullable(D.string),
-  codeLifetime: D.nullable(D.string),
+  codeLifetime: D.nullable(D.union(D.number, D.literal(0))),
   codeExpiresAt: D.nullable(D.string),
 });
 
@@ -11,7 +11,7 @@ type CodeInfo = D.TypeOf<typeof groupCodeDecoder>;
 
 export interface CodeAdditions {
   codeExpiration?: Date;
-  codeLifetimeParsed?: Duration; // FIXME "Parsed" suffix is just there as there is a conflict. Should be fixed by parsing duration directly
+  codeLifetime?: CodeLifetime;
   hasCodeNotSet: boolean;
   hasCodeUnused: boolean;
   hasCodeInUse: boolean;
@@ -20,14 +20,12 @@ export interface CodeAdditions {
   durationSinceFirstCodeUse?: Duration;
   durationBeforeCodeExpiration?: Duration;
 }
+export type CodeLifetime = Duration | 0 | null;
 
-// Adds to the given group some new computed attributes (as value)
-// The resulting object can be used in templates as value will not be recomputed
-export function withCodeAdditions<T extends CodeInfo>(g: T): T & CodeAdditions {
+export function codeAdditions(g: CodeInfo): CodeAdditions {
   return {
-    ...g,
     codeExpiration: codeExpiration(g),
-    codeLifetimeParsed: codeLifetime(g),
+    codeLifetime: codeLifetime(g),
     hasCodeNotSet: hasCodeNotSet(g),
     hasCodeUnused: hasCodeUnused(g),
     hasCodeInUse: hasCodeInUse(g),
@@ -42,11 +40,16 @@ export function codeExpiration(group: CodeInfo): Date|undefined {
   return group.codeExpiresAt ? new Date(group.codeExpiresAt) : undefined;
 }
 
-export function codeLifetime(group: CodeInfo): Duration|undefined {
+export function codeLifetime(group: CodeInfo): CodeLifetime | undefined {
   const lifetime = group.codeLifetime;
-  if (!lifetime) return undefined;
-  const duration = Duration.fromString(lifetime);
+  if (typeof lifetime !== 'number' || lifetime === 0) return lifetime;
+  const duration = Duration.fromSeconds(lifetime);
   return duration.isValid() ? duration : undefined;
+}
+
+export function isSameCodeLifetime(a: CodeLifetime | undefined, b: CodeLifetime | undefined): boolean {
+  if (a instanceof Duration && b instanceof Duration) return a.toString() === b.toString();
+  return a === b;
 }
 
 export function hasCodeNotSet(group: CodeInfo): boolean {
@@ -70,7 +73,7 @@ export function hasCodeExpired(group: CodeInfo): boolean {
 export function codeFirstUseDate(group: CodeInfo): Date|undefined {
   const expiration = codeExpiration(group);
   const lifetime = codeLifetime(group);
-  if (!expiration || !lifetime) return undefined;
+  if (!expiration || !(lifetime instanceof Duration)) return undefined;
   return new Date(expiration.valueOf() - lifetime.ms);
 }
 
